@@ -38,8 +38,13 @@ if (values.help || positionals.length < 2) {
 
 const num = (v) => (v == null ? undefined : Number(v));
 const [input, output] = positionals;
-const { seed, info, frame } = await frameImageToFile(input, output, {
-  seed: values.seed, wear: num(values.wear), style: values.style, finish: values.finish, palette: values.palette, thickness: num(values.thickness), overhang: num(values.overhang),
-  maxThickness: num(values.detail), quality: num(values.quality), background: values.background,
-});
-console.log(`seed: ${seed}  ${frame.style} · ${frame.finish}/${frame.palette}  (${info.width}x${info.height})`);
+try {
+  const { seed, info, frame } = await frameImageToFile(input, output, {
+    seed: values.seed, wear: num(values.wear), style: values.style, finish: values.finish, palette: values.palette, thickness: num(values.thickness), overhang: num(values.overhang),
+    maxThickness: num(values.detail), quality: num(values.quality), background: values.background,
+  });
+  console.log(`seed: ${seed}  ${frame.style} · ${frame.finish}/${frame.palette}  (${info.width}x${info.height})`);
+} catch (e) {
+  console.error(e.message.replace(/^gilt-frame: /, 'gilt-frame: '));
+  process.exit(1);
+}

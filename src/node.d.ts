@@ -6,8 +6,10 @@ export interface FrameImageOptions extends Omit<FrameOptions, 'width' | 'height'
   quality?: number;
   /** Flatten transparency onto this colour (always applied for JPEG, default white). */
   background?: string;
-  /** Worker threads for rendering. Default: min(8, cores − 1). */
+  /** Worker threads for rendering. Default: min(8, cores − 1). Renders may run concurrently; they share one pool. */
   threads?: number;
+  /** Refuse outputs larger than this (full size, after upscaling). Default 268 MP, libvips' own input limit. */
+  maxOutputPixels?: number;
 }
 
 export interface FrameImageResult {

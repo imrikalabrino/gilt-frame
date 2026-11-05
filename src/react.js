@@ -15,18 +15,23 @@ function renderOffThread(options) {
         pending.delete(data.id);
         if (data.error) p?.reject(new Error(data.error)); else p?.resolve(data.frame);
       };
+      // e.g. a bundler that can't serve the worker file: render the queued jobs here instead
+      worker.onerror = () => {
+        worker = null;
+        for (const [id, p] of pending) { pending.delete(id); Promise.resolve().then(() => renderFrame(p.options)).then(p.resolve, p.reject); }
+      };
     } catch { worker = null; }
   }
   if (!worker) return Promise.resolve().then(() => renderFrame(options));
   const id = nextId++;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); worker.postMessage({ id, options }); });
+  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject, options }); worker.postMessage({ id, options }); });
 }
 
 const pct = (v, t) => `${(v / t) * 100}%`;
 
 export function GiltFrame({
   src, alt = '', seed, width, height, thickness, overhang, wear, frameStyle, finish, palette, maxThickness = 260,
-  fit = 'cover', className = '', style, imgProps, onSeed,
+  fit = 'cover', className = '', style, imgProps, onSeed, onError,
 }) {
   const [natural, setNatural] = useState(null);
   const [frame, setFrame] = useState(null);
@@ -49,12 +54,21 @@ export function GiltFrame({
     [dims?.width, dims?.height, finalSeed, thickness, overhang, wear, frameStyle, finish, palette, maxThickness],
   );
 
+  // Invalid options (e.g. sizes from untrusted input) must not take the page down: report and
+  // show the bare picture instead.
+  const [layout0, layoutError] = useMemo(() => {
+    if (!opts) return [null, null];
+    try { return [frameLayout(opts), null]; } catch (e) { return [null, e]; }
+  }, [opts]);
+  const report = (e) => (onError ? onError(e) : console.error(e));
+
   useEffect(() => {
+    if (layoutError) { report(layoutError); return undefined; }
     if (!opts) return undefined;
     let live = true;
-    renderOffThread(opts).then((f) => { if (live) setFrame(f); });
+    renderOffThread(opts).then((f) => { if (live) setFrame(f); }, (e) => { if (live) report(e); });
     return () => { live = false; };
-  }, [opts]);
+  }, [opts, layoutError]);
 
   useEffect(() => {
     if (!frame || !canvas.current) return;
@@ -66,7 +80,7 @@ export function GiltFrame({
 
   const cls = `gilt-frame ${seedToClass(finalSeed)} ${className}`.trim();
   // Layout is known from the options alone, so the picture shows before the frame finishes.
-  const layout = frame ?? (opts && frameLayout(opts));
+  const layout = frame ?? layout0;
   if (!layout) return h('div', { className: cls, 'data-gilt-seed': finalSeed, style });
   return h('div', { className: cls, 'data-gilt-seed': finalSeed, style: { position: 'relative', aspectRatio: `${layout.fullWidth} / ${layout.fullHeight}`, ...style } },
     h('img', {

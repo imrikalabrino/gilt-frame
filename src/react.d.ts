@@ -24,6 +24,8 @@ export interface GiltFrameProps {
   imgProps?: ImgHTMLAttributes<HTMLImageElement>;
   /** Called with the seed in use once the frame is drawn (handy when it was random). */
   onSeed?: (seed: string) => void;
+  /** Invalid options or a failed render. The picture still shows, without a frame. Default: console.error. */
+  onError?: (error: Error) => void;
 }
 
 /** Wrapper <div> carries class="gilt-frame gilt-frame-<seed>". */

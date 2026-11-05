@@ -17,4 +17,4 @@ createServer(async (req, res) => {
   if (e.code !== 'EADDRINUSE') throw e;
   console.error(`Port ${port} is already in use (is the demo already running? try http://localhost:${port}/), or pass another port: node examples/serve.js ${port + 1}`);
   process.exit(1);
-}).listen(port, () => console.log(`http://localhost:${port}/`));
+}).listen(port, '127.0.0.1', () => console.log(`http://localhost:${port}/`)); // local only: it's a dev demo

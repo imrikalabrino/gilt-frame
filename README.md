@@ -145,6 +145,15 @@ What keeps it fast and light:
 - **Detail budget.** A 6000 px photo doesn't need a 1200 px-wide carving rendered at full size. The moulding renders at up to `maxThickness` px, then upscales with lanczos.
 - **Threads, not a port.** Profiling showed the remaining cost is ordinary per-pixel lighting maths. In Node the row phases run on a worker pool over SharedArrayBuffers, with an atomic counter for load balancing: about 4× faster, with the same bytes out. Browsers render in a Web Worker. One readable JS codebase runs everywhere, with no native or WASM build step.
 
+## Production notes
+
+- **Input safety.** Every option is validated with no silent coercion: width and height must be finite numbers from 1 to 100,000; `wear` and `overhang` 0–1; `maxThickness` 16–4000; `seed` a string or number. A render also refuses a canvas over `maxPixels` (default 40 MP, about 440 MB of working memory) before allocating anything, and the Node pipeline refuses outputs over `maxOutputPixels` (default 268 MP). Errors are `TypeError` / `RangeError` with a message saying what to change. Sizes taken from uploads or query strings can't exhaust memory.
+- **No side effects.** The core does no network or file access and no `eval`. The seed only reaches the DOM through `seedToClass`, which escapes everything outside `[A-Za-z0-9-]`, and frames are drawn to a canvas, so there's no HTML injection path. Untrusted image files are decoded by `sharp` (libvips) with its default limits.
+- **Concurrency.** In Node, any number of `frameImage` / `renderFrameParallel` calls can run at once. They share one worker pool, replies are routed by job id, and a crashed worker fails only its own jobs and is replaced. Idle workers never keep the process alive; `closePool()` shuts them down explicitly.
+- **React failures.** Invalid options or a failed render call `onError` (default `console.error`) and show the bare picture rather than throwing. If the worker file can't be loaded by your bundler, rendering falls back to the main thread.
+- **Determinism across engines.** The same seed always gives the same design. Pixel values can differ by a level or two between JavaScript engines (V8, JavaScriptCore, SpiderMonkey), because their `Math.exp`/`pow`/`sin` round differently. Within one engine, output is byte-identical, threaded or not.
+- **Tested.** On every push, CI runs the suite on Node 18, 20 and 22 (Linux and macOS): determinism, every style and finish, untrusted-input rejection, threaded vs single-threaded equality, and concurrent renders sharing the pool.
+
 ## Determinism
 
 Each subsystem (proportions, colour, profile, bands, corner, centre, wear, noise) draws from its own forked PRNG stream (cyrb128 hash, then sfc32). A seed's design never depends on image dimensions; only tiling, fitting and detail scale adapt to the size. Rendering has no per-thread randomness.

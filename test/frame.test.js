@@ -82,6 +82,26 @@ test('baroque seeds keep their design when the style is forced', () => {
   assert.ok(g.corner);
 });
 
+test('untrusted options are rejected with clear errors, before any allocation', () => {
+  const bad = [
+    [{ width: 1e6, height: 10 }, /width must be between/],
+    [{ width: Infinity, height: 10 }, /width must be a finite number/],
+    [{ width: '400', height: 300 }, /width must be a finite number/],
+    [{ width: 400 }, /height is required/],
+    [{ width: 400, height: 300, wear: NaN }, /wear must be a finite number/],
+    [{ width: 400, height: 300, wear: 2 }, /wear must be between 0 and 1/],
+    [{ width: 400, height: 300, thickness: -5 }, /thickness must be between/],
+    [{ width: 400, height: 300, overhang: 50 }, /overhang must be between 0 and 1/],
+    [{ width: 400, height: 300, maxThickness: 1e6 }, /maxThickness must be between/],
+    [{ width: 400, height: 300, seed: {} }, /seed must be a string or a finite number/],
+    [{ width: 50000, height: 50000, thickness: 10 }, /over the 40.0 MP budget/],
+  ];
+  for (const [o, re] of bad) assert.throws(() => renderFrame(o), re, JSON.stringify(o));
+  // a huge picture at the seed's own (proportional) thickness is fine: the detail budget shrinks the canvas
+  const big = renderFrame({ width: 50000, height: 40000, seed: 'ok' });
+  assert.ok(big.width * big.height < 40e6 && big.scale < 0.1);
+});
+
 test('seed class round-trips any string', () => {
   for (const seed of ['abc123', 'with space', 'émoji 🖼️', '"><script>', 'a_b']) {
     const cls = seedToClass(seed);
@@ -113,6 +133,13 @@ test('parallel render is bit-identical to single-threaded', async () => {
   assert.equal(digest(await renderFrameParallel({ ...opts, threads: 4 })), digest(renderFrame(opts)));
 });
 
+test('parallel: concurrent renders sharing the pool each get their own correct frame', async () => {
+  const styles = ['baroque', 'tabernacle', 'ripple', 'plain', 'victorian', 'barbizon'];
+  const jobs = styles.map((style, i) => ({ width: 1400 + i * 50, height: 1000, seed: 'conc' + i, style, threads: 4 }));
+  const frames = await Promise.all(jobs.map((j) => renderFrameParallel(j)));
+  frames.forEach((f, i) => assert.equal(digest(f), digest(renderFrame(jobs[i])), jobs[i].style));
+});
+
 test('node: frameImage wraps a raster and leaves the picture centre untouched', async () => {
   const img = await sharp({ create: { width: 300, height: 180, channels: 3, background: '#ff0000' } }).png().toBuffer();
   const { buffer, seed, frame, info } = await frameImage(img, { seed: 'node' });
@@ -120,6 +147,11 @@ test('node: frameImage wraps a raster and leaves the picture centre untouched', 
   assert.equal(info.width, frame.fullWidth);
   const px = await sharp(buffer).extract({ left: frame.imageX + 150, top: frame.imageY + 90, width: 1, height: 1 }).raw().toBuffer();
   assert.deepEqual([...px.subarray(0, 3)], [255, 0, 0]);
+});
+
+test('react: invalid options render the bare picture instead of throwing', () => {
+  const html = renderToString(createElement(GiltFrame, { src: '/a.jpg', width: 1e7, height: 300, seed: 'bad' }));
+  assert.match(html, /class="gilt-frame gilt-frame-bad"/);
 });
 
 test('react: wrapper carries the seed class and lays out before rendering', () => {

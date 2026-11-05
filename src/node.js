@@ -17,6 +17,11 @@ async function loadSharp() {
 export async function frameOverlay(options) {
   const sharp = await loadSharp();
   const f = await renderFrameParallel(options);
+  // the frame is upscaled to full output size here; keep that within what libvips will accept
+  const maxOut = options.maxOutputPixels ?? 268_402_689;
+  if (f.fullWidth * f.fullHeight > maxOut) {
+    throw new RangeError(`gilt-frame: output would be ${f.fullWidth}×${f.fullHeight} (${(f.fullWidth * f.fullHeight / 1e6).toFixed(0)} MP), over maxOutputPixels ${(maxOut / 1e6).toFixed(0)} MP`);
+  }
   let buf = Buffer.from(f.data.buffer, f.data.byteOffset, f.data.byteLength);
   if (f.scale < 1) {
     buf = await sharp(buf, { raw: { width: f.width, height: f.height, channels: 4 } })

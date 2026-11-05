@@ -17,9 +17,14 @@ export interface FrameOptions {
   thickness?: number;
   /** Free margin for crests/cartouches outside the moulding, as a fraction of thickness (0 = none). Default: from seed. */
   overhang?: number;
-  /** Detail budget: the moulding is rendered at most this many px wide, then upscaled. Default 420. */
+  /** Detail budget: the moulding is rendered at most this many px wide, then upscaled. 16–4000, default 420. */
   maxThickness?: number;
+  /** Refuse to render a canvas larger than this many pixels (~11 bytes each). Default LIMITS.maxPixels (40 MP). */
+  maxPixels?: number;
 }
+
+/** Hard limits applied to every call: width/height ≤ maxDimension, render canvas ≤ maxPixels by default. */
+export const LIMITS: { maxDimension: number; maxPixels: number };
 
 export type Style = 'baroque' | 'barbizon' | 'plain' | 'victorian' | 'ripple' | 'tabernacle';
 export type Finish = 'gold' | 'wood' | 'parcel';

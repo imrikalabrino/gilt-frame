@@ -115,10 +115,35 @@ export function resolveFinish(g, options = {}) {
   };
 }
 
+export const LIMITS = { maxDimension: 100_000, maxPixels: 40e6 };
+
+/**
+ * Reject anything that isn't a sane, finite option up front. Sizes may come from untrusted input
+ * (uploaded images, query strings), so nothing here is coerced silently.
+ */
+function validate(o) {
+  const num = (k, lo, hi, required = false) => {
+    const v = o[k];
+    if (v == null) { if (required) throw new TypeError(`gilt-frame: ${k} is required`); return; }
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new TypeError(`gilt-frame: ${k} must be a finite number`);
+    if (v < lo || v > hi) throw new RangeError(`gilt-frame: ${k} must be between ${lo} and ${hi} (got ${v})`);
+  };
+  num('width', 1, LIMITS.maxDimension, true);
+  num('height', 1, LIMITS.maxDimension, true);
+  num('thickness', 1e-3, LIMITS.maxDimension);
+  num('overhang', 0, 1);
+  num('wear', 0, 1);
+  num('maxThickness', 16, 4000);
+  num('maxPixels', 1, 1e9);
+  if (o.seed != null && typeof o.seed !== 'string' && !(typeof o.seed === 'number' && Number.isFinite(o.seed))) {
+    throw new TypeError('gilt-frame: seed must be a string or a finite number');
+  }
+}
+
 /** Output geometry for given options, without rendering (cheap: genome + arithmetic). */
 export function frameLayout(options = {}) {
+  validate(options);
   const W = Math.round(options.width), H = Math.round(options.height);
-  if (!(W > 0 && H > 0)) throw new TypeError('gilt-frame: width and height must be positive numbers');
   const seed = options.seed == null || options.seed === '' ? randomSeed() : String(options.seed);
   const g = makeGenome(seed, options.style);
   const th = options.thickness ?? g.thickness;
@@ -147,6 +172,10 @@ export function setup(options = {}, alloc = ALLOC) {
   // Detail budget: the frame is rendered with at most `maxThickness` px of moulding, then upscaled.
   const k = Math.min(1, (options.maxThickness ?? 420) / Math.max(T, Tt, Tb));
   const cw = Math.max(1, Math.round(fullW * k)), ch = Math.max(1, Math.round(fullH * k));
+  const budget = options.maxPixels ?? LIMITS.maxPixels;
+  if (cw * ch > budget) {
+    throw new RangeError(`gilt-frame: this frame would render a ${cw}×${ch} canvas (${(cw * ch / 1e6).toFixed(1)} MP), over the ${(budget / 1e6).toFixed(1)} MP budget (~11 bytes/px). Lower maxThickness or thickness, or raise maxPixels.`);
+  }
   const Tr = T * k, Ttr = Tt * k, Tbr = Tb * k, ox = m * k, oy = m * k, Wo = (W + 2 * T) * k, Ho = (H + Tt + Tb) * k;
   const inner = [ox + Tr, oy + Ttr, ox + Wo - Tr, oy + Ho - Tbr];
   const N = cw * ch;
