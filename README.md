@@ -2,7 +2,8 @@
 
 Procedurally generated **ornate Baroque / Rococo carved picture frames** (gilt, wood or parcel-gilt) for any image, any size, any ratio, rendered per pixel to look like photographed gilding, wear included.
 
-Designs aren't picked from a pool. Each seed drives continuous parameters:
+Designs aren't picked from a pool. Each seed picks a **style**, then drives continuous parameters within it:
+- **Style:** Baroque / Rococo, Barbizon (Louis XV revival), plain moulding, Victorian compo, auricular ripple, or architectural tabernacle.
 - **Moulding profile:** torus, cove, ogee, scotia, bead, sanded frieze, and a velvet or linen liner.
 - **Carved runs:** acanthus, water-leaf, gadroon, egg-and-dart, rinceau, rope, pearls, bead-and-reel and shells.
 - **Cartouches:** volute curvature, leaf lobing and curl, shell ribs and asymmetry, and their layout.
@@ -11,6 +12,19 @@ Designs aren't picked from a pool. Each seed drives continuous parameters:
 Pass a seed string to get the same frame back at any image size.
 
 ![contact sheet](examples/sheet.png)
+
+One frame per style:
+
+![styles](examples/styles.png)
+
+| style | share of seeds | what it is |
+|---|---|---|
+| `baroque` | 40% | layered carved runs, corner and centre cartouches with volutes, acanthus and shells |
+| `barbizon` | 16% | a big swept ogee or cove, small corner cartouches with leaf sprays, a narrow carved run, often a linen liner and gilt slip |
+| `plain` | 14% | a single cushion, scoop or ogee moulding with no carving; wear (flaking, craquelure) does the talking |
+| `victorian` | 12% | wide flat friezes packed with low-relief compo foliage between pearl or rope borders |
+| `ripple` | 9% | one broad cove carved with bold auricular lobes, often with pale gesso wash in the recesses |
+| `tabernacle` | 9% | architectural: dentil cornice and frieze on top, fluted pilasters with capitals, plinth with rosette blocks; butt joints, taller top and bottom |
 
 One seed in every finish and palette:
 
@@ -46,6 +60,7 @@ Rendering is spread over CPU cores (worker threads on shared memory). The output
 ```bash
 npx gilt-frame photo.jpg framed.png --seed louis-xiv --wear 0.4
 npx gilt-frame photo.jpg framed.png --finish parcel --palette walnut
+npx gilt-frame photo.jpg framed.png --style tabernacle
 ```
 
 ### React
@@ -55,6 +70,7 @@ import { GiltFrame } from 'gilt-frame/react';
 
 <GiltFrame src="/painting.jpg" seed="rocaille-7" wear={0.3} onSeed={(s) => console.log(s)} />
 <GiltFrame src="/portrait.jpg" finish="wood" palette="mahogany" />
+<GiltFrame src="/landscape.jpg" frameStyle="barbizon" />
 ```
 
 The picture is a normal `<img>`. The frame is a `<canvas>` rendered in a Web Worker, so the main thread stays free. It is responsive, and layout is known before rendering finishes. Pass `width`/`height` (the image's intrinsic size) to skip measuring the image.
@@ -87,6 +103,7 @@ seedFromClass(document.querySelector('.gilt-frame').classList); // 'my seed'
 | `width`, `height` | required | picture size in px |
 | `seed` | random | any string; the same seed gives the same design at **every** size and ratio |
 | `wear` | from seed (0.15–0.45) | 0 = fresh gilding … 1 = rubbed through to the red bole, chipped to the gesso, grime in the recesses |
+| `style` | from seed | `baroque` `barbizon` `plain` `victorian` `ripple` `tabernacle` (in React the prop is `frameStyle`, since `style` is the CSS prop) |
 | `finish` | from seed (gold 62%, wood 24%, parcel 14%) | `gold`, `wood`, or `parcel` (carved wood with gilded carving and sight edge) |
 | `palette` | from seed | gold: `classic` `rich` `rose` `pale` `green` `bronze`; wood: `walnut` `mahogany` `oak` `cherry` `ebony` `honey` `rosewood`. Each seed adds a small tint jitter. A wood name implies `wood` when `finish` isn't set |
 | `thickness` | from seed (15–25% of short side) | moulding width; px if > 1, else a fraction of the short side |
@@ -99,7 +116,8 @@ seedFromClass(document.querySelector('.gilt-frame').classList); // 'my seed'
 1. **Height field, not vector art.** The moulding cross-section is a real height profile with fillet steps, mitred per pixel. Every carved element (leaf, volute, shell rib, pearl) is scan-filled, turned into a rounded dome by an exact Euclidean distance transform, and stacked on what's beneath it. Midribs, veins and scroll channels are carved in the same way.
 2. **Lighting.** Normals; ray-marched cast shadows; cavity occlusion; and a metallic studio-reflection model with burnished highlights on proud surfaces and matte gold in recesses and sanded friezes. Velvet or linen liners are lit as fabric.
 3. **Wood is its own material.** Annual rings and pore streaks run along each side and change direction at the mitres, as in real joinery. The wood takes diffuse light with a varnish highlight, and wear exposes paler bare wood rather than bole.
-4. **Wear driven by exposure.** Gilding is rubbed through to red bole where hands and dusting cloths reach: the proudest carving, sharp ridges and outer edges. The abrasion is streaked along the moulding. Gesso chips show on the worst spots, grime settles in crevices, gold-leaf sheets vary slightly in tone with faint seams, and mitre joints open up.
+4. **Different joinery per style.** Ring styles are mitred per pixel. Tabernacle frames use butt joints: the entablature and plinth run the full width, their cornice and base mouldings project past the sides, and fine seams mark where members meet. The picture's position and the output size account for the taller top and bottom (`thicknessTop`, `thicknessBottom`, `imageY`).
+5. **Wear driven by exposure.** Gilding is rubbed through to red bole where hands and dusting cloths reach: the proudest carving, sharp ridges and outer edges. The abrasion is streaked along the moulding. Gesso chips show on the worst spots, grime (or, on limed frames, pale gesso wash) settles in crevices, plain gilt loses whole patches of leaf in streaks along edges and the lower rail, craquelure crazes the flats, gold-leaf sheets vary slightly in tone with faint seams, and mitre joints open up.
 
 ## Performance
 

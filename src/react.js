@@ -25,7 +25,7 @@ function renderOffThread(options) {
 const pct = (v, t) => `${(v / t) * 100}%`;
 
 export function GiltFrame({
-  src, alt = '', seed, width, height, thickness, overhang, wear, finish, palette, maxThickness = 260,
+  src, alt = '', seed, width, height, thickness, overhang, wear, frameStyle, finish, palette, maxThickness = 260,
   fit = 'cover', className = '', style, imgProps, onSeed,
 }) {
   const [natural, setNatural] = useState(null);
@@ -45,8 +45,8 @@ export function GiltFrame({
 
   const dims = width && height ? { width, height } : natural;
   const opts = useMemo(
-    () => (dims ? { width: dims.width, height: dims.height, seed: finalSeed, thickness, overhang, wear, finish, palette, maxThickness } : null),
-    [dims?.width, dims?.height, finalSeed, thickness, overhang, wear, finish, palette, maxThickness],
+    () => (dims ? { width: dims.width, height: dims.height, seed: finalSeed, thickness, overhang, wear, style: frameStyle, finish, palette, maxThickness } : null),
+    [dims?.width, dims?.height, finalSeed, thickness, overhang, wear, frameStyle, finish, palette, maxThickness],
   );
 
   useEffect(() => {

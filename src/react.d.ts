@@ -10,6 +10,8 @@ export interface GiltFrameProps {
   width?: number;
   height?: number;
   wear?: number;
+  /** Frame type (named frameStyle because `style` is the CSS prop). Default: from seed. */
+  frameStyle?: import('./index.js').Style;
   finish?: import('./index.js').Finish;
   palette?: import('./index.js').GoldPalette | import('./index.js').WoodPalette;
   thickness?: number;

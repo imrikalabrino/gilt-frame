@@ -141,7 +141,7 @@ function place(els, origin, ang) {
   return mapAll(els, (x, y) => [origin[0] + x * ca - y * sa, origin[1] + x * sa + y * ca]);
 }
 
-function centerpiece(g, hinge, ang, R) {
+export function centerpiece(g, hinge, ang, R) {
   switch (g.kind) {
     case 'shell': return shell({ hinge, ang, R, ...g.shell });
     case 'rosette': return rosette({ c: hinge, R: R * 0.75, ang, ...g.rosette });

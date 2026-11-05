@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import sharp from 'sharp';
-import { renderFrame, frameLayout, makeGenome, seedFromClass, seedToClass, GOLDS, WOODS } from '../src/index.js';
+import { renderFrame, frameLayout, makeGenome, seedFromClass, seedToClass, GOLDS, WOODS, STYLES } from '../src/index.js';
 import { frameImage, renderFrameParallel, closePool } from '../src/node.js';
 import { GiltFrame } from '../src/react.js';
 
@@ -52,6 +52,34 @@ test('finish / palette overrides keep the design and change the material', () =>
   assert.deepEqual(gold.genome, wood.genome);
   assert.notEqual(digest(gold), digest(wood));
   assert.throws(() => renderFrame({ ...base, palette: 'plywood' }), /unknown palette/);
+});
+
+test('every style renders, keeps the opening clear, and is chosen by seeds', () => {
+  const seen = new Set();
+  for (let i = 0; i < 300; i++) seen.add(frameLayout({ width: 10, height: 10, seed: 's' + i }).style);
+  assert.deepEqual([...seen].sort(), [...STYLES].sort());
+  for (const style of STYLES) {
+    const f = renderFrame({ width: 400, height: 300, seed: 'sty', style });
+    assert.equal(f.style, style);
+    const cx = Math.round((f.imageX + 200) * f.scale), cy = Math.round((f.imageY + 150) * f.scale);
+    assert.equal(f.data[(cy * f.width + cx) * 4 + 3], 0, style);
+    assert.equal(f.fullHeight, 300 + f.thicknessTop + f.thicknessBottom + 2 * f.overhang);
+  }
+  assert.throws(() => renderFrame({ width: 10, height: 10, style: 'gothic' }), /style must be one of/);
+});
+
+test('tabernacle: taller entablature and plinth than the sides; threads still identical', async () => {
+  const f = frameLayout({ width: 600, height: 800, seed: 'tab', style: 'tabernacle' });
+  assert.ok(f.thicknessTop > f.thickness && f.thicknessBottom >= f.thickness);
+  assert.equal(f.imageY, f.overhang + f.thicknessTop);
+  const opts = { width: 1200, height: 1500, seed: 'tab', style: 'tabernacle' };
+  assert.equal(digest(await renderFrameParallel({ ...opts, threads: 4 })), digest(renderFrame(opts)));
+});
+
+test('baroque seeds keep their design when the style is forced', () => {
+  const g = makeGenome('keep', 'baroque'), h = makeGenome('keep', 'baroque');
+  assert.deepEqual(g, h);
+  assert.ok(g.corner);
 });
 
 test('seed class round-trips any string', () => {

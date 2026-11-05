@@ -17,6 +17,7 @@
   <button id="new">New frame</button>
   <label>seed <input id="seed" type="text"></label>
   <label>wear <input id="wear" type="range" min="0" max="1" step="0.05" value="0.3"></label>
+  <label>style <select id="style"><option value="">from seed</option><option>baroque</option><option>barbizon</option><option>plain</option><option>victorian</option><option>ripple</option><option>tabernacle</option></select></label>
   <label>finish <select id="finish"><option value="">from seed</option><option>gold</option><option>wood</option><option>parcel</option></select></label>
   <label>palette <select id="palette"><option value="">from seed</option>
     <optgroup label="gold"><option>classic</option><option>rich</option><option>rose</option><option>pale</option><option>green</option><option>bronze</option></optgroup>
@@ -43,7 +44,7 @@
 
   function draw(seed) {
     const val = (id) => document.getElementById(id).value || undefined;
-    const opts = { width: W, height: H, seed, wear: +val('wear'), finish: val('finish'), palette: val('palette'), maxThickness: 260 };
+    const opts = { width: W, height: H, seed, wear: +val('wear'), style: val('style'), finish: val('finish'), palette: val('palette'), maxThickness: 260 };
     const L = frameLayout(opts);
     wrap.className = `wrap gilt-frame ${seedToClass(L.seed)}`;
     wrap.style.aspectRatio = `${L.fullWidth} / ${L.fullHeight}`;
@@ -56,14 +57,14 @@
       const f = data.frame;
       cv.width = f.width; cv.height = f.height;
       cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(f.data), f.width, f.height), 0, 0);
-      document.getElementById('info').innerHTML = `<code>${wrap.className}</code> · ${f.finish}/${f.palette} · ${f.width}×${f.height} in ${(performance.now() - t) | 0} ms (worker)`;
+      document.getElementById('info').innerHTML = `<code>${wrap.className}</code> · ${f.style} · ${f.finish}/${f.palette} · ${f.width}×${f.height} in ${(performance.now() - t) | 0} ms (worker)`;
     };
     worker.postMessage({ id: my, options: opts });
     document.getElementById('seed').value = L.seed;
   }
   document.getElementById('new').onclick = () => draw(randomSeed());
   document.getElementById('seed').onchange = (e) => draw(e.target.value);
-  for (const id of ['wear', 'finish', 'palette']) document.getElementById(id).oninput = () => draw(document.getElementById('seed').value);
+  for (const id of ['wear', 'style', 'finish', 'palette']) document.getElementById(id).oninput = () => draw(document.getElementById('seed').value);
   draw(new URLSearchParams(location.search).get('seed') || 'versailles');
 </script>
 </html>

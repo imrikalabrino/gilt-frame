@@ -25,6 +25,17 @@ function strand(x0, y0, x1, y1, hwMax, pow, grow = 0) {
   return ribbon(X, Y, hw);
 }
 
+/** Teardrop along a quadratic curve P0 -> P1 bending through C (fat at the start, tapering). */
+function drop(P0, C, P1, hwMax, taper = 0.65) {
+  const X = [], Y = [], hw = [];
+  for (let i = 0; i <= 32; i++) {
+    const u = i / 32, a = (1 - u) ** 2, b = 2 * u * (1 - u), c = u * u;
+    X.push(a * P0[0] + b * C[0] + c * P1[0]); Y.push(a * P0[1] + b * C[1] + c * P1[1]);
+    hw.push(hwMax * Math.sin(Math.PI * Math.min(0.995, Math.max(0.005, u))) ** 0.45 * (1 - taper * u));
+  }
+  return ribbon(X, Y, hw);
+}
+
 export function bandMotif(m, B) {
   switch (m.type) {
     case 'pearls': {
@@ -86,6 +97,42 @@ export function bandMotif(m, B) {
         els.push(...leaf({ base: [ox + len * 0.2, y(B / 2 + amp * 0.95)], ang: s > 0 ? 0.25 : -0.25, len: len * 0.26, w: B * 0.15, lobes: 3, depth: 0.35, curl: 0.8 * s }));
       }
       return { len, els };
+    }
+    case 'ripple': {
+      // Auricular lobes: a fat teardrop sweeping across the cove, a round drop and a crescent nestled beside it.
+      const len = B * (1.0 + 0.5 * m.aspect), f = m.flip ? -1 : 1, X = (v) => (f > 0 ? v : len - v);
+      const sw = 0.35 + 0.3 * m.slant;
+      return {
+        len, hCap: 0.38, relief: 1.1,
+        els: [
+          body(drop([X(len * 0.12), B * 0.1], [X(len * (0.2 + sw)), B * 0.42], [X(len * (0.55 + sw * 0.4)), B * 0.94], len * 0.3)),
+          body(drop([X(len * 0.78), B * 0.08], [X(len * 0.95), B * 0.2], [X(len * 1.02), B * 0.4], len * 0.13, 0.4)),
+          body(circle(X(len * 0.2), B * 0.76, B * (0.12 + 0.04 * m.size))),
+        ],
+      };
+    }
+    case 'compo': {
+      // Victorian composition ornament: a scrolling stem dense with small leaves, curls and berries, in low relief.
+      const len = B * (1.4 + 0.8 * m.aspect), amp = B * 0.2;
+      const X = [], Y = [], hw = [];
+      for (let i = 0; i <= 64; i++) {
+        const x = lerp(-0.05, 1.05, i / 64) * len;
+        X.push(x); Y.push(B / 2 + amp * Math.sin((TAU * x) / len)); hw.push(B * 0.045);
+      }
+      const els = [body(ribbon(X, Y, hw))];
+      for (const s of [1, -1]) {
+        const ox = s > 0 ? 0 : len / 2, y = (v) => (s > 0 ? v : B - v);
+        els.push(...scroll({ P: [ox + len * 0.1, y(B / 2 + amp * 0.6)], Q: [ox + len * 0.3, y(B * 0.22)], thick: B * 0.04, kind: 'C', turnsA: 0.05, turnsB: 1.1 + 0.5 * m.size, flip: s < 0, grooved: false }));
+        for (const [t, a] of [[0.18, -0.6], [0.36, 0.5]]) {
+          els.push(...leaf({ base: [ox + len * t, y(B / 2 + amp * Math.sin(TAU * t))], ang: s * a + (s > 0 ? 0 : Math.PI), len: B * 0.32, w: B * 0.1, lobes: 3, depth: 0.4, curl: 0.9 * s, veins: false }));
+        }
+        els.push(body(circle(ox + len * 0.42, y(B * 0.8), B * 0.06)));
+      }
+      return { len, els, hCap: 0.17, relief: 0.8 };
+    }
+    case 'dentils': {
+      const len = B * (0.75 + 0.3 * m.aspect), a = len * 0.2, b = len * 0.8;
+      return { len, hCap: 0.32, relief: 1, els: [body([a, B * 0.05, b, B * 0.05, b, B * 0.95, a, B * 0.95])] };
     }
     case 'shells':
     default: {

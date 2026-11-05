@@ -7,6 +7,8 @@ export interface FrameOptions {
   seed?: string | number;
   /** Age, 0 (fresh gilding) … 1 (heavily rubbed to the bole, chipped, grimy). Default: from seed, mild. */
   wear?: number;
+  /** Frame type. Default: from seed (baroque 40%, barbizon 16%, plain 14%, victorian 12%, ripple 9%, tabernacle 9%). */
+  style?: Style;
   /** Material. 'parcel' = carved wood with gilded carving and sight edge. Default: from seed. */
   finish?: Finish;
   /** Named tone. A gold name tints the gilding, a wood name picks the timber (and implies wood when finish isn't set). Default: from seed. */
@@ -19,12 +21,14 @@ export interface FrameOptions {
   maxThickness?: number;
 }
 
+export type Style = 'baroque' | 'barbizon' | 'plain' | 'victorian' | 'ripple' | 'tabernacle';
 export type Finish = 'gold' | 'wood' | 'parcel';
 export type GoldPalette = 'classic' | 'rich' | 'rose' | 'pale' | 'green' | 'bronze';
 export type WoodPalette = 'walnut' | 'mahogany' | 'oak' | 'cherry' | 'ebony' | 'honey' | 'rosewood';
 
 export interface FrameLayout {
   seed: string;
+  style: Style;
   finish: Finish;
   /** Resolved tone: gold name, wood name, or "wood+gold" for parcel-gilt. */
   palette: string;
@@ -36,7 +40,10 @@ export interface FrameLayout {
   imageY: number;
   imageWidth: number;
   imageHeight: number;
+  /** Side moulding width. Tabernacle frames are taller at top and bottom: see thicknessTop / thicknessBottom. */
   thickness: number;
+  thicknessTop: number;
+  thicknessBottom: number;
   overhang: number;
   genome: unknown;
 }
@@ -55,7 +62,8 @@ export interface Frame extends FrameLayout {
 export function renderFrame(options: FrameOptions): Frame;
 /** Output geometry without rendering. */
 export function frameLayout(options: FrameOptions): FrameLayout;
-export function makeGenome(seed: string): unknown;
+export function makeGenome(seed: string, style?: Style): unknown;
+export const STYLES: Style[];
 export const GOLDS: Record<GoldPalette, object>;
 export const WOODS: Record<WoodPalette, object>;
 export function randomSeed(): string;
