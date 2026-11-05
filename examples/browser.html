@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gilt-frame demo</title>
+<style>
+  body { margin: 0; background: #2b2724; color: #e8dcc4; font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; }
+  input[type=text] { width: 140px; }
+  main { display: grid; place-items: center; padding: 16px; }
+  .wrap { position: relative; width: min(92vw, 900px); }
+  .wrap img, .wrap canvas { position: absolute; display: block; }
+  .wrap canvas { inset: 0; width: 100%; height: 100%; }
+  code { color: #f3d58a; }
+</style>
+<header>
+  <button id="new">New frame</button>
+  <label>seed <input id="seed" type="text"></label>
+  <label>wear <input id="wear" type="range" min="0" max="1" step="0.05" value="0.3"></label>
+  <label>finish <select id="finish"><option value="">from seed</option><option>gold</option><option>wood</option><option>parcel</option></select></label>
+  <label>palette <select id="palette"><option value="">from seed</option>
+    <optgroup label="gold"><option>classic</option><option>rich</option><option>rose</option><option>pale</option><option>green</option><option>bronze</option></optgroup>
+    <optgroup label="wood"><option>walnut</option><option>mahogany</option><option>oak</option><option>cherry</option><option>ebony</option><option>honey</option><option>rosewood</option></optgroup>
+  </select></label>
+  <span id="info"></span>
+</header>
+<main><div class="wrap" id="wrap"><img id="pic" alt=""><canvas id="cv"></canvas></div></main>
+<script>
+  // Plain script: runs even when the module below can't load, so failures are visible.
+  const say = (m) => { document.getElementById('info').textContent = m; };
+  if (location.protocol === 'file:') say('Open this through the demo server: run "node examples/serve.js" in the project folder, then visit http://localhost:5178');
+  window.addEventListener('error', (e) => say('Error: ' + (e.message || e.target?.src || 'a script failed to load')), true);
+  window.addEventListener('unhandledrejection', (e) => say('Error: ' + (e.reason?.message ?? e.reason)));
+</script>
+<script type="module">
+  import { frameLayout, randomSeed, seedToClass } from '../src/index.js';
+  const W = 1200, H = 800;
+  const pic = document.getElementById('pic'), cv = document.getElementById('cv'), wrap = document.getElementById('wrap');
+  const worker = new Worker(new URL('../src/browser-worker.js', import.meta.url), { type: 'module' });
+  worker.onerror = (e) => { document.getElementById('info').textContent = 'Worker failed to start: ' + (e.message || 'module workers unsupported?'); };
+  let id = 0;
+  pic.src = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="a" x2="0" y2="1"><stop offset="0" stop-color="#6d8fa6"/><stop offset=".6" stop-color="#c9b48a"/><stop offset="1" stop-color="#4f5b3a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#a)"/><circle cx="820" cy="250" r="90" fill="#f4e3b0" opacity=".85"/><path d="M0 620 Q300 520 600 600 T1200 560 V800 H0Z" fill="#3d4a2e"/></svg>`);
+
+  function draw(seed) {
+    const val = (id) => document.getElementById(id).value || undefined;
+    const opts = { width: W, height: H, seed, wear: +val('wear'), finish: val('finish'), palette: val('palette'), maxThickness: 260 };
+    const L = frameLayout(opts);
+    wrap.className = `wrap gilt-frame ${seedToClass(L.seed)}`;
+    wrap.style.aspectRatio = `${L.fullWidth} / ${L.fullHeight}`;
+    Object.assign(pic.style, { left: `${L.imageX / L.fullWidth * 100}%`, top: `${L.imageY / L.fullHeight * 100}%`, width: `${W / L.fullWidth * 100}%`, height: `${H / L.fullHeight * 100}%` });
+    const t = performance.now(), my = ++id;
+    document.getElementById('info').textContent = 'rendering…';
+    worker.onmessage = ({ data }) => {
+      if (data.id !== my) return;
+      if (data.error) { document.getElementById('info').textContent = 'Render error: ' + data.error; return; }
+      const f = data.frame;
+      cv.width = f.width; cv.height = f.height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(f.data), f.width, f.height), 0, 0);
+      document.getElementById('info').innerHTML = `<code>${wrap.className}</code> · ${f.finish}/${f.palette} · ${f.width}×${f.height} in ${(performance.now() - t) | 0} ms (worker)`;
+    };
+    worker.postMessage({ id: my, options: opts });
+    document.getElementById('seed').value = L.seed;
+  }
+  document.getElementById('new').onclick = () => draw(randomSeed());
+  document.getElementById('seed').onchange = (e) => draw(e.target.value);
+  for (const id of ['wear', 'finish', 'palette']) document.getElementById(id).oninput = () => draw(document.getElementById('seed').value);
+  draw(new URLSearchParams(location.search).get('seed') || 'versailles');
+</script>
+</html>

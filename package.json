@@ -1,0 +1,67 @@
+{
+  "name": "gilt-frame",
+  "version": "0.1.0",
+  "description": "Procedurally generated, photoreal ornate Baroque / Rococo carved gilt picture frames for any image. Seeded, deterministic, with wear. Zero-dependency core, multi-threaded in Node.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./node": {
+      "types": "./src/node.d.ts",
+      "default": "./src/node.js"
+    },
+    "./react": {
+      "types": "./src/react.d.ts",
+      "default": "./src/react.js"
+    }
+  },
+  "bin": {
+    "gilt-frame": "./bin/gilt-frame.js"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "bench": "node examples/bench.js",
+    "sheet": "node examples/contact-sheet.js"
+  },
+  "keywords": [
+    "frame",
+    "picture-frame",
+    "gilt",
+    "baroque",
+    "rococo",
+    "svg",
+    "procedural",
+    "generative",
+    "seed"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=17",
+    "sharp": ">=0.32"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.34.0"
+  }
+}
