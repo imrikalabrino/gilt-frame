@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { frameImageToFile } from '../src/node.js';
+import { parseFrameClass } from '../src/classname.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     seed: { type: 'string', short: 's' },
+    class: { type: 'string', short: 'c' },
     wear: { type: 'string', short: 'w' },
     style: { type: 'string', short: 'y' },
     finish: { type: 'string', short: 'f' },
@@ -22,7 +24,8 @@ const { values, positionals } = parseArgs({
 if (values.help || positionals.length < 2) {
   console.log(`gilt-frame <input> <output.(png|jpg|webp|avif)> [options]
 
-  -s, --seed <str>        reproduce a specific frame (printed after every run)
+  -s, --seed <str>        reproduce a specific frame (its settings class is printed after every run)
+  -c, --class <class>     reproduce a frame from its settings class, e.g. gilt-frame-e8wffc1rds-w0-ripple-gold-classic
   -w, --wear <0..1>       age: 0 = fresh gilding, 1 = heavily rubbed (default: from seed, mild)
   -y, --style <name>      baroque | barbizon | plain | victorian | ripple | tabernacle (default: from seed)
   -f, --finish <kind>     gold | wood | parcel (wood with gilded carving)   (default: from seed)
@@ -39,11 +42,15 @@ if (values.help || positionals.length < 2) {
 const num = (v) => (v == null ? undefined : Number(v));
 const [input, output] = positionals;
 try {
-  const { seed, info, frame } = await frameImageToFile(input, output, {
-    seed: values.seed, wear: num(values.wear), style: values.style, finish: values.finish, palette: values.palette, thickness: num(values.thickness), overhang: num(values.overhang),
+  const fromClass = values.class ? parseFrameClass(values.class) : {};
+  if (values.class && !fromClass) throw new Error(`gilt-frame: "${values.class}" is not a gilt-frame settings class`);
+  const { info, frame } = await frameImageToFile(input, output, {
+    ...fromClass,
+    seed: values.seed ?? fromClass.seed, wear: num(values.wear) ?? fromClass.wear, style: values.style ?? fromClass.style, finish: values.finish ?? fromClass.finish, palette: values.palette ?? fromClass.palette,
+    thickness: num(values.thickness) ?? fromClass.thickness, overhang: num(values.overhang) ?? fromClass.overhang,
     maxThickness: num(values.detail), quality: num(values.quality), background: values.background,
   });
-  console.log(`seed: ${seed}  ${frame.style} · ${frame.finish}/${frame.palette}  (${info.width}x${info.height})`);
+  console.log(`${frame.className}  (${info.width}x${info.height})`);
 } catch (e) {
   console.error(e.message.replace(/^gilt-frame: /, 'gilt-frame: '));
   process.exit(1);

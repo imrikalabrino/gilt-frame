@@ -4,9 +4,10 @@ import { createHash } from 'node:crypto';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import sharp from 'sharp';
-import { renderFrame, frameLayout, makeGenome, seedFromClass, seedToClass, GOLDS, WOODS, STYLES } from '../src/index.js';
+import { renderFrame, frameLayout, makeGenome, seedFromClass, seedToClass, frameClass, parseFrameClass, GOLDS, WOODS, STYLES } from '../src/index.js';
 import { frameImage, renderFrameParallel, closePool } from '../src/node.js';
 import { GiltFrame } from '../src/react.js';
+import { setup, heightRows, relief, shadeRows } from '../src/frame.js';
 
 after(closePool);
 const digest = (f) => createHash('sha1').update(f.data).digest('hex');
@@ -35,6 +36,23 @@ test('wear changes the surface, not the design', () => {
   const a = renderFrame({ width: 300, height: 300, seed: 'w', wear: 0 }), b = renderFrame({ width: 300, height: 300, seed: 'w', wear: 1 });
   assert.notEqual(digest(a), digest(b));
   assert.deepEqual(a.genome, b.genome);
+});
+
+test('wear 0 is pristine: the seed\'s damage traits have no effect at all', () => {
+  // render each style at wear 0 twice: as-is, and with every damage trait forced off; must be identical
+  const run = (opts, scrub) => {
+    const S = setup(opts);
+    if (scrub) Object.assign(S.wear, { flake: 0, chips: 0, grime: 0, crackle: 0, crack: false });
+    heightRows(S, 0, S.ch); relief(S); shadeRows(S, 0, S.ch);
+    return createHash('sha1').update(S.out).digest('hex');
+  };
+  for (const style of STYLES) {
+    let seed = 0;
+    while (!makeGenome('w0-' + seed, style).wear.flake) seed++; // a seed that does flake when aged
+    const opts = { width: 420, height: 320, seed: 'w0-' + seed, style, wear: 0 };
+    assert.equal(run(opts, false), run(opts, true), style);
+    assert.notEqual(run({ ...opts, wear: 0.6 }, false), run({ ...opts, wear: 0.6 }, true), style + ' (traits do act when aged)');
+  }
 });
 
 test('finishes: seeds spread over gold / wood / parcel and every palette', () => {
@@ -102,6 +120,27 @@ test('untrusted options are rejected with clear errors, before any allocation', 
   assert.ok(big.width * big.height < 40e6 && big.scale < 0.1);
 });
 
+test('settings class: carries every setting and recreates the frame exactly', () => {
+  const f = renderFrame({ width: 300, height: 220, seed: 'e8wffc1rds', wear: 0 });
+  assert.match(f.className, /^gilt-frame-e8wffc1rds-w0-[a-z]+-(gold|wood|parcel)-[a-z_]+$/);
+  const cases = [
+    { seed: 'plain-seed' },
+    { seed: 'my seed-1', wear: 0.333, style: 'tabernacle', finish: 'parcel', palette: 'walnut', thickness: 0.12, overhang: 0.2 },
+    { seed: 42, style: 'ripple', finish: 'wood', palette: 'oak', wear: 1 },
+    { seed: 'émoji 🖼️', finish: 'gold', palette: 'rose', thickness: 40 },
+  ];
+  for (const c of cases) {
+    const a = renderFrame({ width: 260, height: 200, ...c });
+    const opts = parseFrameClass(`foo gilt-frame ${a.className} bar`);
+    const b = renderFrame({ width: 260, height: 200, ...opts });
+    assert.equal(b.className, a.className, JSON.stringify(c));
+    assert.equal(digest(b), digest(a), a.className);
+    assert.equal(seedFromClass(a.className), String(c.seed));
+    assert.equal(frameClass(a), a.className);
+  }
+  assert.equal(parseFrameClass('foo bar'), null);
+});
+
 test('seed class round-trips any string', () => {
   for (const seed of ['abc123', 'with space', 'émoji 🖼️', '"><script>', 'a_b']) {
     const cls = seedToClass(seed);
@@ -156,7 +195,7 @@ test('react: invalid options render the bare picture instead of throwing', () =>
 
 test('react: wrapper carries the seed class and lays out before rendering', () => {
   const html = renderToString(createElement(GiltFrame, { src: '/a.jpg', width: 400, height: 300, seed: 'react' }));
-  assert.match(html, /class="gilt-frame gilt-frame-react"/);
+  assert.match(html, /class="gilt-frame gilt-frame-react-w\d+(p\d+)?-[a-z]+-[a-z]+-[a-z_]+"/);
   assert.match(html, /<img/);
   assert.match(html, /<canvas/);
 });

@@ -34,7 +34,7 @@
   window.addEventListener('unhandledrejection', (e) => say('Error: ' + (e.reason?.message ?? e.reason)));
 </script>
 <script type="module">
-  import { frameLayout, randomSeed, seedToClass } from '../src/index.js';
+  import { frameLayout, randomSeed } from '../src/index.js';
   const W = 1200, H = 800;
   const pic = document.getElementById('pic'), cv = document.getElementById('cv'), wrap = document.getElementById('wrap');
   const worker = new Worker(new URL('../src/browser-worker.js', import.meta.url), { type: 'module' });
@@ -46,7 +46,7 @@
     const val = (id) => document.getElementById(id).value || undefined;
     const opts = { width: W, height: H, seed, wear: +val('wear'), style: val('style'), finish: val('finish'), palette: val('palette'), maxThickness: 260 };
     const L = frameLayout(opts);
-    wrap.className = `wrap gilt-frame ${seedToClass(L.seed)}`;
+    wrap.className = `wrap gilt-frame ${L.className}`;
     wrap.style.aspectRatio = `${L.fullWidth} / ${L.fullHeight}`;
     Object.assign(pic.style, { left: `${L.imageX / L.fullWidth * 100}%`, top: `${L.imageY / L.fullHeight * 100}%`, width: `${W / L.fullWidth * 100}%`, height: `${H / L.fullHeight * 100}%` });
     const t = performance.now(), my = ++id;
@@ -57,7 +57,7 @@
       const f = data.frame;
       cv.width = f.width; cv.height = f.height;
       cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(f.data), f.width, f.height), 0, 0);
-      document.getElementById('info').innerHTML = `<code>${wrap.className}</code> · ${f.style} · ${f.finish}/${f.palette} · ${f.width}×${f.height} in ${(performance.now() - t) | 0} ms (worker)`;
+      document.getElementById('info').innerHTML = `<code>${f.className}</code> · ${f.width}×${f.height} in ${(performance.now() - t) | 0} ms (worker)`;
     };
     worker.postMessage({ id: my, options: opts });
     document.getElementById('seed').value = L.seed;

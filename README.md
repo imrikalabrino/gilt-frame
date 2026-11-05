@@ -87,14 +87,39 @@ ctx.putImageData(new ImageData(f.data, f.width, f.height), 0, 0);
 
 `examples/browser.html` is a live demo, and `examples/perf.js` reproduces the numbers below. Run `node examples/serve.js` and open http://localhost:5178/.
 
-## Finding a frame's seed
+## Recreating a frame from its class
 
-Every frame's root element has the class `gilt-frame gilt-frame-<SEED>` (plus `data-gilt-seed`), so you can inspect a frame you like in devtools and copy its seed. Characters that aren't class-safe are escaped as `_<hex>_` (`"my seed"` becomes `gilt-frame-my_20_seed`). `seedFromClass` decodes it:
+Every frame's root element carries a **settings class** with everything needed to recreate it. That's the wrapper `<div>` in React; the CLI prints it after each run, and `renderFrame` / `frameLayout` return it as `className`:
+
+```
+gilt-frame gilt-frame-e8wffc1rds-w0-ripple-gold-classic
+                     └ seed   └wear% └style └finish └palette
+```
+
+| part | meaning |
+|---|---|
+| seed | the seed. Characters other than letters and digits (dashes included) are escaped as `_<hex>_`, e.g. `my seed-1` becomes `my_20_seed_2d_1` |
+| `w30` | wear in percent; decimals use `p`, e.g. `w33p3` = 33.3% |
+| style | `baroque` `barbizon` `plain` `victorian` `ripple` `tabernacle` |
+| finish | `gold` `wood` `parcel` |
+| palette | gold tone or wood; parcel-gilt shows both as `wood_gold`, e.g. `walnut_rich` |
+| `t…` / `o…` | thickness / overhang, only present when set explicitly (`t0p15` = 0.15, `t40` = 40 px) |
+
+Inspect a frame you like in devtools, copy the class, and turn it back into options:
 
 ```js
-import { seedFromClass } from 'gilt-frame';
-seedFromClass(document.querySelector('.gilt-frame').classList); // 'my seed'
+import { parseFrameClass, renderFrame } from 'gilt-frame';
+
+const opts = parseFrameClass(document.querySelector('.gilt-frame').classList);
+// { seed: 'e8wffc1rds', wear: 0, style: 'ripple', finish: 'gold', palette: 'classic' }
+renderFrame({ width: 1200, height: 800, ...opts }); // same frame
 ```
+
+```bash
+npx gilt-frame photo.jpg framed.png --class gilt-frame-e8wffc1rds-w0-ripple-gold-classic
+```
+
+The seed's own default wear is a whole percent, so a class always reproduces its frame exactly. `seedFromClass(classList)` still returns just the seed.
 
 ## Options
 
@@ -148,7 +173,7 @@ What keeps it fast and light:
 ## Production notes
 
 - **Input safety.** Every option is validated with no silent coercion: width and height must be finite numbers from 1 to 100,000; `wear` and `overhang` 0–1; `maxThickness` 16–4000; `seed` a string or number. A render also refuses a canvas over `maxPixels` (default 40 MP, about 440 MB of working memory) before allocating anything, and the Node pipeline refuses outputs over `maxOutputPixels` (default 268 MP). Errors are `TypeError` / `RangeError` with a message saying what to change. Sizes taken from uploads or query strings can't exhaust memory.
-- **No side effects.** The core does no network or file access and no `eval`. The seed only reaches the DOM through `seedToClass`, which escapes everything outside `[A-Za-z0-9-]`, and frames are drawn to a canvas, so there's no HTML injection path. Untrusted image files are decoded by `sharp` (libvips) with its default limits.
+- **No side effects.** The core does no network or file access and no `eval`. The seed only reaches the DOM through the settings class, which escapes everything outside `[A-Za-z0-9]`, and frames are drawn to a canvas, so there's no HTML injection path. Untrusted image files are decoded by `sharp` (libvips) with its default limits.
 - **Concurrency.** In Node, any number of `frameImage` / `renderFrameParallel` calls can run at once. They share one worker pool, replies are routed by job id, and a crashed worker fails only its own jobs and is replaced. Idle workers never keep the process alive; `closePool()` shuts them down explicitly.
 - **React failures.** Invalid options or a failed render call `onError` (default `console.error`) and show the bare picture rather than throwing. If the worker file can't be loaded by your bundler, rendering falls back to the main thread.
 - **Determinism across engines.** The same seed always gives the same design. Pixel values can differ by a level or two between JavaScript engines (V8, JavaScriptCore, SpiderMonkey), because their `Math.exp`/`pow`/`sin` round differently. Within one engine, output is byte-identical, threaded or not.

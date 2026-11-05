@@ -75,3 +75,4 @@ export async function frameImageToFile(input, output, options = {}) {
 
 export { renderFrame, renderFrameParallel, closePool };
 export { randomSeed, seedToClass, seedFromClass } from './rng.js';
+export { frameClass, parseFrameClass } from './classname.js';

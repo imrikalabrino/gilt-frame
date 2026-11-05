@@ -78,9 +78,11 @@ export function GiltFrame({
     onSeed?.(frame.seed);
   }, [frame]);
 
-  const cls = `gilt-frame ${seedToClass(finalSeed)} ${className}`.trim();
+
   // Layout is known from the options alone, so the picture shows before the frame finishes.
   const layout = frame ?? layout0;
+  // settings class (gilt-frame-<seed>-w<wear>-<style>-<finish>-<palette>…) once the layout is known
+  const cls = `gilt-frame ${layout ? layout.className : seedToClass(finalSeed)} ${className}`.trim();
   if (!layout) return h('div', { className: cls, 'data-gilt-seed': finalSeed, style });
   return h('div', { className: cls, 'data-gilt-seed': finalSeed, style: { position: 'relative', aspectRatio: `${layout.fullWidth} / ${layout.fullHeight}`, ...style } },
     h('img', {
@@ -98,3 +100,4 @@ export function GiltFrame({
 
 export { renderFrame, frameLayout, randomSeed, seedToClass };
 export { seedFromClass } from './rng.js';
+export { frameClass, parseFrameClass } from './classname.js';

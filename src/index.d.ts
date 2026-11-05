@@ -33,6 +33,10 @@ export type WoodPalette = 'walnut' | 'mahogany' | 'oak' | 'cherry' | 'ebony' | '
 
 export interface FrameLayout {
   seed: string;
+  /** Settings class, e.g. "gilt-frame-e8wffc1rds-w0-ripple-gold-classic". parseFrameClass() turns it back into options. */
+  className: string;
+  /** Resolved wear, 0–1 (the seed's default is a whole percent). */
+  wear: number;
   style: Style;
   finish: Finish;
   /** Resolved tone: gold name, wood name, or "wood+gold" for parcel-gilt. */
@@ -72,7 +76,11 @@ export const STYLES: Style[];
 export const GOLDS: Record<GoldPalette, object>;
 export const WOODS: Record<WoodPalette, object>;
 export function randomSeed(): string;
-/** "gilt-frame-<seed>" with non [A-Za-z0-9-] characters escaped as _hex_. */
+/** "gilt-frame-<seed>" with non [A-Za-z0-9] characters (dashes included) escaped as _hex_. */
 export function seedToClass(seed: string): string;
+/** Settings class for a layout or rendered frame: gilt-frame-<seed>-w<wear%>-<style>-<finish>-<palette>[-t<thickness>][-o<overhang>]. */
+export function frameClass(frame: FrameLayout): string;
+/** Options from a settings class (string, className or classList), or null. Add width/height and render. */
+export function parseFrameClass(classList: string | Iterable<string>): Pick<FrameOptions, 'seed' | 'wear' | 'style' | 'finish' | 'palette' | 'thickness' | 'overhang'> | null;
 /** Recover the seed from an element's class list / className string. */
 export function seedFromClass(classList: string | Iterable<string>): string | null;

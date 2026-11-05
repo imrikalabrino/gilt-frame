@@ -63,18 +63,19 @@ export function randomSeed() {
   return s;
 }
 
-// Seeds are exposed as a CSS class `gilt-frame-<seed>`. Characters outside
-// [A-Za-z0-9-] are escaped as `_<hex>_` so any seed string round-trips.
+// Seeds are exposed in a CSS class `gilt-frame-<seed>[-<settings>…]`. In the seed, characters
+// outside [A-Za-z0-9] (dashes included, since dashes separate the settings) are escaped as
+// `_<hex>_`, so any seed string round-trips.
+export const escapeSeed = (seed) => String(seed).replace(/[^A-Za-z0-9]/g, (c) => '_' + c.codePointAt(0).toString(16) + '_');
+export const unescapeSeed = (s) => s.replace(/_([0-9a-f]+)_/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+
 export function seedToClass(seed) {
-  return 'gilt-frame-' + String(seed).replace(/[^A-Za-z0-9-]/g, (c) => '_' + c.codePointAt(0).toString(16) + '_');
+  return 'gilt-frame-' + escapeSeed(seed);
 }
 
+/** The seed from an element's class list / className string (works on full settings classes too). */
 export function seedFromClass(classList) {
   const list = typeof classList === 'string' ? classList.split(/\s+/) : Array.from(classList);
-  for (const c of list) {
-    if (c.startsWith('gilt-frame-')) {
-      return c.slice(11).replace(/_([0-9a-f]+)_/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
-    }
-  }
+  for (const c of list) if (c.startsWith('gilt-frame-')) return unescapeSeed(c.slice(11).split('-')[0]);
   return null;
 }

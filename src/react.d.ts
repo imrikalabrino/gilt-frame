@@ -1,5 +1,5 @@
 import type { ReactElement, CSSProperties, ImgHTMLAttributes } from 'react';
-export { renderFrame, frameLayout, randomSeed, seedToClass, seedFromClass } from './index.js';
+export { renderFrame, frameLayout, randomSeed, seedToClass, seedFromClass, frameClass, parseFrameClass } from './index.js';
 
 export interface GiltFrameProps {
   src: string;

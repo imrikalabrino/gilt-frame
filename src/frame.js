@@ -15,6 +15,7 @@ import { ribbon } from './geometry.js';
 import { Tile, sampleTile, blur } from './heightfield.js';
 import { makeNoise, sample } from './noise.js';
 import { createRng, randomSeed } from './rng.js';
+import { frameClass } from './classname.js';
 
 const GOLD = 1, SAND = 2, LINER = 3, HOLE = 4, WOOD = 5;
 const SIDES = [
@@ -152,11 +153,16 @@ export function frameLayout(options = {}) {
   // tabernacle frames are taller at the top (entablature) and bottom (plinth) than at the sides
   const Tt = g.tab ? Math.round(T * g.tab.hTop) : T, Tb = g.tab ? Math.round(T * g.tab.hBottom) : T;
   const fin = resolveFinish(g, options);
-  return {
+  const L = {
     seed, genome: g, style: g.style, finish: fin.kind, palette: fin.kind === 'wood' ? fin.woodName : fin.kind === 'parcel' ? `${fin.woodName}+${fin.goldName}` : fin.goldName,
+    // the seed's own wear is a whole percent, so the settings class always reproduces it exactly
+    wear: options.wear ?? Math.round(g.wear.amount * 100) / 100,
+    thicknessOption: options.thickness ?? null, overhangOption: options.overhang ?? null,
     fullWidth: W + 2 * T + 2 * m, fullHeight: H + Tt + Tb + 2 * m,
     imageX: m + T, imageY: m + Tt, imageWidth: W, imageHeight: H, thickness: T, thicknessTop: Tt, thicknessBottom: Tb, overhang: m,
   };
+  L.className = frameClass(L);
+  return L;
 }
 
 /**
@@ -167,7 +173,7 @@ export function frameLayout(options = {}) {
 export function setup(options = {}, alloc = ALLOC) {
   const L = frameLayout(options);
   const { seed, genome: g, imageWidth: W, imageHeight: H, thickness: T, thicknessTop: Tt, thicknessBottom: Tb, overhang: m, fullWidth: fullW, fullHeight: fullH } = L;
-  const wear = { ...g.wear, amount: options.wear ?? g.wear.amount };
+  const wear = { ...g.wear, amount: L.wear };
   const fin = resolveFinish(g, options);
   // Detail budget: the frame is rendered with at most `maxThickness` px of moulding, then upscaled.
   const k = Math.min(1, (options.maxThickness ?? 420) / Math.max(T, Tt, Tb));
@@ -236,7 +242,7 @@ export function setup(options = {}, alloc = ALLOC) {
     steps, sdx: KEY[0] / L2, sdy: KEY[1] / L2, tanE: KEY[2] / L2,
     wear,
     burnish: g.gold.burnish,
-    finish: L.finish, palette: L.palette,
+    finish: L.finish, palette: L.palette, layout: { wear: L.wear, className: L.className, thicknessOption: L.thicknessOption, overhangOption: L.overhangOption },
     wood: fin.wood, sightBand: g.bands.length - 1,
     liner: g.liner ? hsl(...g.liner.color) : null,
     linen: !!g.liner && g.liner.color[2] > 0.5,
@@ -474,7 +480,9 @@ export function shadeRows(S, y0, y1) {
   const grainA = 256 / (Tr * 4), grainD = 256 / (Tr * 0.7), ringF = (2 * Math.PI * wood.rings) / (Tr * 0.055);
   const poreA = 256 / (Tr * 1.2), poreD = 256 / Math.max(2, Tr * 0.035), wShin = 20 + 90 * wood.gloss;
   const cavScale = 1 / (Tr * 0.022), convScale = 1 / Math.max(0.6, Tr * 0.004), rc = Math.max(1, Math.round(Tr * 0.006));
-  const rimW = 2 + Tr * 0.015, leafSize = Tr * wear.leaf, wearAmt = wear.amount, crackW = wear.crack ? 0.35 + 0.5 * wearAmt : 0;
+  const rimW = 2 + Tr * 0.015, leafSize = Tr * wear.leaf, wearAmt = wear.amount;
+  // wear 0 means pristine: every effect of age fades in over the first quarter of the scale
+  const age = smooth(0, 0.25, wearAmt), crackW = wear.crack && age > 0 ? (0.35 + 0.5 * wearAmt) * age : 0;
   const lowS = 256 / Math.max(32, Tr * 1.6), wearS = 256 / Math.max(16, Tr * 0.45);
   const exposure = 2.5;
   const sTop = Tr * 0.07, sLeft = Tr * 0.05, sHair = Math.max(0.8, Tr * 0.008);
@@ -553,7 +561,7 @@ export function shadeRows(S, y0, y1) {
         const wn = sample(nWear, along * wearS * 0.22, d * wearS * 2.2);
         const carved = Math.min(1.6, Math.max(0, prom) * 0.55) + Math.min(0.7, Math.max(0, conv) * 0.12);
         const expo = carved + (d < Tr * 0.035 ? 0.55 : 0);
-        const rub = smooth(0, 0.35, expo * 0.85 + (wn - 0.5) * 0.9 - 1.3 + wearAmt * 1.35);
+        const rub = smooth(0, 0.35, expo * 0.85 + (wn - 0.5) * 0.9 - 1.3 + wearAmt * 1.35) * age;
         if (mat === WOOD) {
           // Carved wood under varnish: grain-figured albedo, diffuse light, a clear-coat highlight.
           const fig = sample(nLow, along * grainA, d * grainD);
@@ -619,21 +627,21 @@ export function shadeRows(S, y0, y1) {
             if (line > 0) { const f = 1 - 0.32 * line * wear.crackle * smooth(0.1, 0.6, wearAmt); r *= f; gg *= f; b *= f; }
           }
           // flaking: whole patches of leaf lost to the white gesso, more at the edges and lower rails
-          if (wear.flake) {
+          if (wear.flake && age > 0) {
             // streaked along the moulding and concentrated on edges / the lower rail, like real losses
             const fn = sample(nWear, along * flakeS * 0.35 + 31, d * flakeS * 2.5 + 71);
             const thr = 0.9 - 0.2 * wear.flake * (0.2 + wearAmt) - 0.09 * (1 - smooth(0, Tr * 0.14, d)) - (sd === 2 ? 0.035 : 0);
             if (fn > thr - 0.02 && d > rimW) {
-              const gv = (0.5 + 0.55 * diff) * ao, t = smooth(thr, thr + 0.012, fn);
-              const lip = fn < thr ? 0.78 : 1; // the lifted edge of the surviving leaf casts a hairline
+              const gv = (0.5 + 0.55 * diff) * ao, t = smooth(thr, thr + 0.012, fn) * age;
+              const lip = fn < thr ? 1 - 0.22 * age : 1; // the lifted edge of the surviving leaf casts a hairline
               r = (r + (gesso[0] * 0.86 * gv - r) * t) * lip; gg = (gg + (gesso[1] * 0.82 * gv - gg) * t) * lip; b = (b + (gesso[2] * 0.72 * gv - b) * t) * lip;
             }
           }
         }
         // what settles in the recesses: dark grime, or on limed / gesso-washed frames a pale residue
-        const grime = clamp01(cav * 0.55) * wear.grime * (0.35 + wearAmt);
+        const grime = clamp01(cav * 0.55) * wear.grime * (0.35 + wearAmt) * age;
         if (wear.wash) {
-          const w = clamp01(cav * 0.8) * (0.55 + 0.6 * wearAmt), v = 0.55 + 0.5 * diff;
+          const w = clamp01(cav * 0.8) * (0.55 + 0.6 * wearAmt) * (0.4 + 0.6 * age), v = 0.55 + 0.5 * diff; // a limed finish, not damage: softer when new
           r += (washC[0] * v - r) * w * 0.85; gg += (washC[1] * v - gg) * w * 0.85; b += (washC[2] * v - b) * w * 0.85;
         } else if (grime > 0) { r += (38 - r) * grime * 0.8; gg += (29 - gg) * grime * 0.8; b += (16 - b) * grime * 0.8; }
       }
@@ -659,6 +667,7 @@ export function result(S) {
     data: S.out, width: S.cw, height: S.ch, scale: S.k, seed: S.seed, genome: S.g,
     fullWidth: S.fullW, fullHeight: S.fullH, imageX: S.m + S.T, imageY: S.m + Math.round(S.Ttr / S.k), imageWidth: S.W, imageHeight: S.H,
     thickness: S.T, thicknessTop: S.Ttr / S.k, thicknessBottom: S.Tbr / S.k, overhang: S.m, style: S.style, finish: S.finish, palette: S.palette,
+    wear: S.layout.wear, className: S.layout.className, thicknessOption: S.layout.thicknessOption, overhangOption: S.layout.overhangOption,
   };
 }
 
