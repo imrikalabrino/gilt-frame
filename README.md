@@ -85,7 +85,7 @@ ctx.putImageData(new ImageData(f.data, f.width, f.height), 0, 0);
 // the picture goes at (f.imageX, f.imageY) × f.scale; the opening holds only the frame's cast shadow
 ```
 
-`examples/browser.html` is a live demo. Run `node examples/serve.js` and open http://localhost:5178/.
+`examples/browser.html` is a live demo, and `examples/perf.js` reproduces the numbers below. Run `node examples/serve.js` and open http://localhost:5178/.
 
 ## Finding a frame's seed
 
@@ -121,18 +121,27 @@ seedFromClass(document.querySelector('.gilt-frame').classList); // 'my seed'
 
 ## Performance
 
-Measured on an Apple M-series machine (10 performance cores) with `node examples/bench.js`:
+Measured on an Apple M-series machine (10 performance cores) with `node --expose-gc examples/perf.js`. Median single-thread `renderFrame` time:
 
-| | single thread (`renderFrame`) | Node pipeline (`frameImage` to JPEG, threaded) |
-|---|---|---|
-| 800×600 | 170 ms | 100 ms |
-| 1920×1080 | 510 ms | — |
-| 3000×2000 | 1.3 s | 0.52 s |
-| 6000×4000 | 1.6 s | 0.80 s |
+| style | 800×600 | 1920×1080 | 4000×3000 |
+|---|---|---|---|
+| baroque | 154 ms | 419 ms | 2.1 s |
+| barbizon | 117 ms | 410 ms | 1.7 s |
+| plain | 71 ms | 263 ms | 1.7 s |
+| victorian | 124 ms | 458 ms | 1.7 s |
+| ripple | 139 ms | 522 ms | 1.5 s |
+| tabernacle | 85 ms | 318 ms | 1.1 s |
 
-What keeps it fast:
+Full Node pipeline (`frameImage` to JPEG, threaded): 117 ms at 800×600, 183 ms at 1920×1080, 632 ms at 4000×3000.
+
+Working memory per render: about 8 MB at 800×600, 31 MB at 1920×1080, 88 MB at 4000×3000. Most of that is the RGBA output itself.
+
+The package is 40 KB with zero runtime dependencies in the core, and it imports in about 5 ms.
+
+What keeps it fast and light:
 - **Build once, stamp many.** Each band motif is one periodic relief tile, sampled with wrap-around along all four sides. Corner cartouches are built once and mirrored into four corners; side cartouches are rotated copies. Tiles are supersampled 2× only when they're small enough to need it.
-- **No wasted pixels.** Rows that cross the picture opening only process the frame plus the margin where its shadow falls. The wide occlusion blur runs at quarter resolution, and the ridge detector is an inline 4-tap test.
+- **Only the frame is stored.** Rows that cross the picture opening keep just the frame plus the margin where its shadow falls; the opening's interior is never allocated or visited. Alpha, coverage, material and side live in bytes. The opening's shadow is analytic, so no rays are traced there.
+- **JIT-friendly inner loops.** Shadow-ray indices are coerced to integers (`Math.round` can return `-0`, which made V8 discard the optimised loop over 200 times per render), and every ray picks its row table once.
 - **Detail budget.** A 6000 px photo doesn't need a 1200 px-wide carving rendered at full size. The moulding renders at up to `maxThickness` px, then upscales with lanczos.
 - **Threads, not a port.** Profiling showed the remaining cost is ordinary per-pixel lighting maths. In Node the row phases run on a worker pool over SharedArrayBuffers, with an atomic counter for load balancing: about 4× faster, with the same bytes out. Browsers render in a Web Worker. One readable JS codebase runs everywhere, with no native or WASM build step.
 

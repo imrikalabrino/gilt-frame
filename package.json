@@ -32,7 +32,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "bench": "node examples/bench.js",
+    "bench": "node --expose-gc examples/perf.js",
     "sheet": "node examples/contact-sheet.js"
   },
   "keywords": [

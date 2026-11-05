@@ -185,13 +185,23 @@ export function setup(options = {}, alloc = ALLOC) {
   }
 
   const q = 4, qw = Math.ceil(cw / q), qh = Math.ceil(ch / q);
+  const reach = Tr * 0.32;
+  const fold = { gapA: new Int32Array(ch), gapB: new Int32Array(ch), rowOff: new Int32Array(ch + 1) };
+  let NR = 0;
+  for (let y = 0; y < ch; y++) {
+    const sp = spans({ inner, reach, cw }, y), gap = sp[2] > sp[1];
+    fold.gapA[y] = gap ? sp[1] : cw; fold.gapB[y] = gap ? sp[2] : cw;
+    fold.rowOff[y] = NR;
+    NR += cw - (fold.gapB[y] - fold.gapA[y]);
+  }
+  fold.rowOff[ch] = NR;
   const L2 = Math.hypot(KEY[0], KEY[1]);
   const steps = [];
   for (let t = 1.2; t < Math.max(4, Tr * 0.22); t *= 1.38) steps.push(t);
 
   return {
     seed, g, W, H, T, m, k, fullW, fullH, cw, ch, Tr, Ttr, Tbr, ox, oy, Wo, Ho, inner, tab, style: g.style,
-    reach: Tr * 0.32,
+    reach,
     prof: { ...lutOf(P), hole: P.hole, low: P.low },
     runs, nLow, nFine, nWear, ramp, q, qw, qh,
     steps, sdx: KEY[0] / L2, sdy: KEY[1] / L2, tanE: KEY[2] / L2,
@@ -204,11 +214,21 @@ export function setup(options = {}, alloc = ALLOC) {
     bole: hsl(12 + 6 * wear.bole, 0.58, 0.3 + 0.08 * wear.bole),
     gesso: hsl(40, 0.22, 0.82),
     leafOff: rng.fork('leaf').next() * 1000,
-    Hf: new Float32Array(alloc(N * 4)), A: new Float32Array(alloc(N * 4)), M: new Uint8Array(alloc(N)),
-    D: new Float32Array(alloc(N * 4)), O: new Float32Array(alloc(N * 4)), BQ: new Float32Array(alloc(qw * qh * 4)), SD: new Uint8Array(alloc(N)),
+    ...fold,
+    // Per-pixel working state lives only where the frame (plus its shadow margin) is: rows that
+    // cross the picture opening drop their middle. Alpha and ornament coverage are bytes.
+    Hf: new Float32Array(alloc(NR * 4)), A: new Uint8ClampedArray(alloc(NR)), O: new Uint8ClampedArray(alloc(NR)),
+    M: new Uint8Array(alloc(NR)), SD: new Uint8Array(alloc(NR)), D: g.tab ? new Float32Array(alloc(NR * 4)) : null,
+    BQ: new Float32Array(alloc(qw * qh * 4)),
     out: new Uint8ClampedArray(alloc(N * 4)),
   };
 }
+
+/** Index of pixel (x, y) in the folded per-pixel arrays, or -1 inside the dropped opening. */
+const fx = (S, x, y) => {
+  const a = S.gapA[y];
+  return x < a ? S.rowOff[y] + x : x >= S.gapB[y] ? S.rowOff[y] + x - (S.gapB[y] - a) : -1;
+};
 
 // Rows that cross the picture opening only need the frame plus a margin for its cast shadow;
 // the opening's interior never influences the result, so every pass skips it.
@@ -221,20 +241,19 @@ function spans(S, y) {
 /** Phase 1 (row-parallel): moulding profile + band relief. */
 export function heightRows(S, y0, y1) {
   if (S.tab) return tabernacleRows(S, y0, y1);
-  const { cw, ox, oy, Wo, Ho, Tr, prof: P, runs, nFine, Hf, A, M, D, SD, finish, sightBand } = S;
+  const { ox, oy, Wo, Ho, Tr, prof: P, runs, nFine, Hf, A, M, SD, finish, sightBand } = S;
   const s2 = [0, 0];
   for (let y = y0; y < y1; y++) {
     const py = y + 0.5, dt = py - oy, db = oy + Ho - py, sp = spans(S, y);
-    Hf.fill(P.hole, y * cw, (y + 1) * cw);
-    D.fill(Infinity, y * cw, (y + 1) * cw);
+    const row = S.rowOff[y], gap = S.gapB[y] - S.gapA[y];
+    Hf.fill(P.hole, row, S.rowOff[y + 1]);
     for (let x = sp[0]; x < sp[3]; x++) {
       if (x === sp[1]) { x = sp[2] - 1; continue; }
-      const i = y * cw + x, px = x + 0.5, dl = px - ox, dr = ox + Wo - px;
+      const i = x < sp[1] ? row + x : row + x - gap, px = x + 0.5, dl = px - ox, dr = ox + Wo - px;
       let d = dt, side = 0, a = dl;
       if (dr < d) { d = dr; side = 1; a = dt; }
       if (db < d) { d = db; side = 2; a = dr; }
       if (dl < d) { d = dl; side = 3; a = db; }
-      D[i] = d;
       SD[i] = side;
       if (d < -0.5) { Hf[i] = P.low; continue; }
       if (d > Tr + 0.5) { M[i] = HOLE; continue; }
@@ -256,7 +275,7 @@ export function heightRows(S, y0, y1) {
       }
       Hf[i] = h;
       M[i] = mat;
-      A[i] = clamp01(d + 0.5) * clamp01(Tr + 0.5 - d);
+      A[i] = clamp01(d + 0.5) * clamp01(Tr + 0.5 - d) * 255;
     }
   }
 }
@@ -272,16 +291,17 @@ const hammered = (n, px, py, T) => {
  * their cornice / base mouldings projecting past the sides; fluted pilasters fill the sides between.
  */
 function tabernacleRows(S, y0, y1) {
-  const { cw, ox, oy, Wo, Ho, Tr, Ttr, Tbr, tab, prof: SP, nFine, Hf, A, M, D, SD, finish, inner } = S;
+  const { ox, oy, Wo, Ho, Tr, Ttr, Tbr, tab, prof: SP, nFine, Hf, A, M, D, SD, finish, inner } = S;
   const [ix0, iy0, ix1, iy1] = inner, s2 = [0, 0];
   const at = (L, d) => Math.min(L.h.length - 1, Math.max(0, Math.round(d * L.res)));
   for (let y = y0; y < y1; y++) {
     const py = y + 0.5, vt = py - oy, vb = oy + Ho - py, sp = spans(S, y);
-    Hf.fill(SP.hole, y * cw, (y + 1) * cw);
-    D.fill(Infinity, y * cw, (y + 1) * cw);
+    const row = S.rowOff[y], gap = S.gapB[y] - S.gapA[y];
+    Hf.fill(SP.hole, row, S.rowOff[y + 1]);
+    D.fill(Infinity, row, S.rowOff[y + 1]);
     for (let x = sp[0]; x < sp[3]; x++) {
       if (x === sp[1]) { x = sp[2] - 1; continue; }
-      const i = y * cw + x, px = x + 0.5;
+      const i = x < sp[1] ? row + x : row + x - gap, px = x + 0.5;
       let L = null, d = 0, side = 0, along = 0, runs = null, edge = Infinity;
       if (vt > -0.5 && vt < Ttr + 0.5 && (px > ox - 0.5 && px < ox + Wo + 0.5 || vt < tab.top.projEnd && px > ox - tab.pr - 0.5 && px < ox + Wo + tab.pr + 0.5)) {
         L = tab.top; d = vt; side = 0; along = px - ox + tab.pr; runs = tab.topRuns;
@@ -313,7 +333,7 @@ function tabernacleRows(S, y0, y1) {
       if (mat === SAND) h += L.tex[li] ? hammered(nFine, px, py, Tr) : (sample(nFine, px * 2.1, py * 2.1) - 0.5) * 0.9;
       if (finish !== 'gold' && (mat === GOLD || mat === SAND)) mat = finish === 'parcel' && (carved > 0.45 || bi === L.band[L.band.length - 2]) ? GOLD : WOOD;
       Hf[i] = h; M[i] = mat;
-      A[i] = clamp01(d + 0.5) * clamp01(edge + 0.5);
+      A[i] = clamp01(d + 0.5) * clamp01(edge + 0.5) * 255;
     }
   }
 }
@@ -350,8 +370,9 @@ export function relief(S) {
     }
     for (let y = Math.max(0, Math.floor(by0)); y < Math.min(ch, Math.ceil(by1)); y++) {
       for (let x = Math.max(0, Math.floor(bx0)); x < Math.min(cw, Math.ceil(bx1)); x++) {
-        const i = y * cw + x, d = D[i];
-        if (M[i] === HOLE) continue;
+        const i = fx(S, x, y);
+        if (i < 0 || M[i] === HOLE) continue;
+        const px = x + 0.5, py = y + 0.5, d = D ? D[i] : Math.min(py - oy, ox + Wo - px, oy + Ho - py, px - ox);
         const qx = x + 0.5 - e, qy = y + 0.5 - f;
         sampleTile(tile, a * qx + b * qy, c * qx + dd * qy, s2); // Mᵀ = M⁻¹ for these orthogonal maps
         const cov = s2[1];
@@ -360,8 +381,8 @@ export function relief(S) {
         const hn = Math.max(cur, base) + s2[0] + standoff;
         const w = smooth(0, 0.7, cov);
         if (hn > cur) Hf[i] = cur + (hn - cur) * w;
-        if (cov > A[i]) A[i] = cov;
-        if (cov > O[i]) O[i] = cov;
+        if (cov * 255 > A[i]) A[i] = cov * 255;
+        if (cov * 255 > O[i]) O[i] = cov * 255;
         if (cov > 0.5 || !M[i]) M[i] = S.finish === 'wood' ? WOOD : GOLD;
       }
     }
@@ -406,7 +427,10 @@ export function relief(S) {
   for (let y = 0; y < ch; y++) {
     const o = ((y / q) | 0) * qw;
     // empty margin isn't a cliff: treat it as level with the outer edge so rims don't read as proud carving
-    for (let x = 0; x < cw; x++) { const i = y * cw + x; Q[o + ((x / q) | 0)] += M[i] ? Hf[i] : edgeH; }
+    const row = S.rowOff[y], ga = S.gapA[y], gb = S.gapB[y];
+    for (let x = 0; x < ga; x++) { const i = row + x; Q[o + ((x / q) | 0)] += M[i] ? Hf[i] : edgeH; }
+    for (let x = ga; x < gb; x++) Q[o + ((x / q) | 0)] += edgeH;
+    for (let x = gb; x < cw; x++) { const i = row + x - (gb - ga); Q[o + ((x / q) | 0)] += M[i] ? Hf[i] : edgeH; }
   }
   for (let y = 0; y < qh; y++) for (let x = 0; x < qw; x++) Q[y * qw + x] /= Math.min(q, ch - y * q) * Math.min(q, cw - x * q);
   blur(Q, BQ, qw, qh, Math.max(1, (Tr * 0.035) / q), tmp);
@@ -434,37 +458,52 @@ export function shadeRows(S, y0, y1) {
     return a + (b - a) * ay;
   };
 
+  const { rowOff, gapA, gapB } = S;
+  const baseR = rowOff.map((o, yy) => o - (gapB[yy] - gapA[yy])); // row base for pixels right of the dropped middle
+  // every row that drops its middle drops the same columns; rays decide their side against those
+  let gapRight = cw;
+  for (let yy = 0; yy < ch; yy++) if (gapB[yy] > gapA[yy]) { gapRight = gapB[yy]; break; }
+  const rowAt = (yy, x) => rowOff[yy] + (x < gapA[yy] ? x : x - (gapB[yy] - gapA[yy]));
+  // slopes and ridges only look at solid neighbours (margin and opening aren't surface)
+  const nb = (j, h) => (j >= 0 && M[j] && M[j] !== HOLE ? Hf[j] : h);
+  // folded index of (x, y), -1 inside the dropped part of the opening
   for (let y = y0; y < y1; y++) {
-    const sp = spans(S, y);
+    const sp = spans(S, y), row = rowOff[y], gap = gapB[y] - gapA[y];
     for (let x = sp[0]; x < sp[3]; x++) {
       if (x === sp[1]) { x = sp[2] - 1; continue; }
-      const i = y * cw + x, mat = M[i], d = D[i];
+      const i = x < sp[1] ? row + x : row + x - gap, mat = M[i];
       if (!mat) continue;
+      const d = D ? D[i] : Math.min(y + 0.5 - oy, ox + Wo - x - 0.5, oy + Ho - y - 0.5, x + 0.5 - ox);
       const it = y + 0.5 - iy0, il = x + 0.5 - ix0, ib = iy1 - y - 0.5, ir = ix1 - x - 0.5;
-      if (mat === HOLE && Math.min(it, il, ib, ir) > S.reach) continue;
+      const o = (y * cw + x) * 4;
+      if (mat === HOLE) {
+        // the picture's shadow is analytic: no rays, no occlusion lookups
+        if (Math.min(it, il, ib, ir) > S.reach) continue;
+        const al = clamp01(0.62 * Math.exp(-it / sTop) + 0.45 * Math.exp(-il / sLeft) + 0.18 * Math.exp(-ib / sHair) + 0.14 * Math.exp(-ir / sHair));
+        if (al > 0.004) { out[o] = 12; out[o + 1] = 8; out[o + 2] = 4; out[o + 3] = al * 255; }
+        continue;
+      }
       const h = Hf[i];
       const jit = 0.75 + 0.5 * (((Math.imul(x, 2654435761) ^ Math.imul(y, 2246822519)) >>> 0) / 4294967296); // decorrelate rays
       let sh = 0;
+      // Rays run up-left for < 0.22·T, shorter than the kept margin, so they never enter the dropped
+      // middle: a ray starting right of it stays right of it. One base table per ray, one load per step.
+      const base = x >= gapRight ? baseR : rowOff;
       for (let s = 0; s < steps.length; s++) {
-        const t = steps[s] * jit, xx = Math.round(x + sdx * t), yy = Math.round(y + sdy * t);
+        const t = steps[s] * jit, xx = Math.round(x + sdx * t) | 0, yy = Math.round(y + sdy * t) | 0; // |0: -0 from Math.round would deopt the typed-array access
         if (xx < 0 || yy < 0 || xx >= cw || yy >= ch) break;
-        const v = (Hf[yy * cw + xx] - h - t * tanE) / (0.3 * t + 0.6);
+        const v = (Hf[base[yy] + xx] - h - t * tanE) / (0.3 * t + 0.6);
         if (v > sh) sh = v;
       }
       if (sh > 1) sh = 1;
       const bl = wide(x, y), cav = Math.max(0, bl - h) * cavScale;
       const ao = 1 / (1 + 1.1 * cav);
-      const o = i * 4;
-      if (mat === HOLE) {
-        const al = clamp01(0.62 * Math.exp(-it / sTop) + 0.45 * Math.exp(-il / sLeft) + 0.18 * Math.exp(-ib / sHair) + 0.14 * Math.exp(-ir / sHair));
-        if (al > 0.004) { out[o] = 12; out[o + 1] = 8; out[o + 2] = 4; out[o + 3] = al * 255; }
-        continue;
-      }
       // Slopes and ridges only look at solid neighbours: the empty margin and the picture opening
       // aren't surface, and treating them as a cliff turns the 1px edge fringe into a fake ridge.
-      const nb = (j) => (M[j] && M[j] !== HOLE ? Hf[j] : h);
-      const hx = x > 0 && x < cw - 1 ? (nb(i + 1) - nb(i - 1)) * 0.5 : 0;
-      const hy = y > 0 && y < ch - 1 ? (nb(i + cw) - nb(i - cw)) * 0.5 : 0;
+      // (frame pixels are at least `reach` from the dropped middle, so neighbours are plain offsets)
+      const up = y > 0 ? rowAt(y - 1, x) : -1, dn = y < ch - 1 ? rowAt(y + 1, x) : -1;
+      const hx = x > 0 && x < cw - 1 ? (nb(i + 1, h) - nb(i - 1, h)) * 0.5 : 0;
+      const hy = y > 0 && y < ch - 1 ? (nb(dn, h) - nb(up, h)) * 0.5 : 0;
       const nl = 1 / Math.sqrt(hx * hx + hy * hy + 1), nx = -hx * nl, ny = -hy * nl, nz = nl;
       const diff = Math.max(0, nx * KEY[0] + ny * KEY[1] + nz * KEY[2]) * (1 - 0.85 * sh);
       const px = x + 0.5, py = y + 0.5;
@@ -479,7 +518,7 @@ export function shadeRows(S, y0, y1) {
         // Wear: exposure decides where hands and dusting cloths reach — proud carving, sharp ridges,
         // outer edges. Noise is stretched along the moulding so abrasion reads as streaks, not spots.
         const xa = Math.max(0, x - rc), xb = Math.min(cw - 1, x + rc), ya = Math.max(0, y - rc), yb = Math.min(ch - 1, y + rc);
-        const conv = (h - 0.25 * (nb(y * cw + xa) + nb(y * cw + xb) + nb(ya * cw + x) + nb(yb * cw + x))) * convScale;
+        const conv = (h - 0.25 * (nb(i - (x - xa), h) + nb(i + (xb - x), h) + nb(rowAt(ya, x), h) + nb(rowAt(yb, x), h))) * convScale;
         const prom = (h - bl) * cavScale;
         const sd = SD[i], along = sd === 0 ? px : sd === 1 ? py : sd === 2 ? -px : -py;
         const wn = sample(nWear, along * wearS * 0.22, d * wearS * 2.2);
@@ -570,15 +609,18 @@ export function shadeRows(S, y0, y1) {
         } else if (grime > 0) { r += (38 - r) * grime * 0.8; gg += (29 - gg) * grime * 0.8; b += (16 - b) * grime * 0.8; }
       }
       // butt joints of a tabernacle: a fine dark seam where members meet
-      if (tab && O[i] < 0.3 && ((y > 0 && M[i - cw] && M[i - cw] !== HOLE && SD[i - cw] !== SD[i]) || (x > 0 && M[i - 1] && M[i - 1] !== HOLE && SD[i - 1] !== SD[i]))) { r *= 0.55; gg *= 0.55; b *= 0.55; }
+      if (tab && O[i] <= 76) {
+        const u = up, l = x > 0 ? i - 1 : -1;
+        if ((u >= 0 && M[u] && M[u] !== HOLE && SD[u] !== SD[i]) || (l >= 0 && M[l] && M[l] !== HOLE && SD[l] !== SD[i])) { r *= 0.55; gg *= 0.55; b *= 0.55; }
+      }
       // opened mitre joints
-      if (!tab && crackW && d < Tr * 0.92 && O[i] < 0.3) {
+      if (!tab && crackW && d < Tr * 0.92 && O[i] <= 76) {
         const dl = px - ox, dr = ox + Wo - px, dt = py - oy, db = oy + Ho - py;
         // at a mitre the two nearest edges are equidistant: (second-nearest − nearest) ≈ 0
         const sec = Math.min(dl === d ? Infinity : dl, dr === d ? Infinity : dr, dt === d ? Infinity : dt, db === d ? Infinity : db) - d;
         if (sec < crackW) { const f = 0.55 + 0.45 * (sec / crackW); r *= f; gg *= f; b *= f; }
       }
-      out[o] = r; out[o + 1] = gg; out[o + 2] = b; out[o + 3] = A[i] * 255;
+      out[o] = r; out[o + 1] = gg; out[o + 2] = b; out[o + 3] = A[i];
     }
   }
 }
