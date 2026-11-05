@@ -286,10 +286,12 @@ export function relief(S) {
     }
   }
   const { q, qw, qh, BQ } = S;
+  const edgeH = P.h[0];
   const Q = new Float32Array(qw * qh), tmp = new Float32Array(qw * qh);
   for (let y = 0; y < ch; y++) {
     const o = ((y / q) | 0) * qw;
-    for (let x = 0; x < cw; x++) Q[o + ((x / q) | 0)] += Hf[y * cw + x];
+    // empty margin isn't a cliff: treat it as level with the outer edge so rims don't read as proud carving
+    for (let x = 0; x < cw; x++) { const i = y * cw + x; Q[o + ((x / q) | 0)] += M[i] ? Hf[i] : edgeH; }
   }
   for (let y = 0; y < qh; y++) for (let x = 0; x < qw; x++) Q[y * qw + x] /= Math.min(q, ch - y * q) * Math.min(q, cw - x * q);
   blur(Q, BQ, qw, qh, Math.max(1, (Tr * 0.035) / q), tmp);
@@ -303,7 +305,7 @@ export function shadeRows(S, y0, y1) {
   const grainA = 256 / (Tr * 4), grainD = 256 / (Tr * 0.7), ringF = (2 * Math.PI * wood.rings) / (Tr * 0.055);
   const poreA = 256 / (Tr * 1.2), poreD = 256 / Math.max(2, Tr * 0.035), wShin = 20 + 90 * wood.gloss;
   const cavScale = 1 / (Tr * 0.022), convScale = 1 / Math.max(0.6, Tr * 0.004), rc = Math.max(1, Math.round(Tr * 0.006));
-  const leafSize = Tr * wear.leaf, wearAmt = wear.amount, crackW = wear.crack ? 0.35 + 0.5 * wearAmt : 0;
+  const rimW = 2 + Tr * 0.015, leafSize = Tr * wear.leaf, wearAmt = wear.amount, crackW = wear.crack ? 0.35 + 0.5 * wearAmt : 0;
   const lowS = 256 / Math.max(32, Tr * 1.6), wearS = 256 / Math.max(16, Tr * 0.45);
   const exposure = 2.5;
   const holeReach = Tr + S.reach, sTop = Tr * 0.07, sLeft = Tr * 0.05, sHair = Math.max(0.8, Tr * 0.008);
@@ -340,8 +342,11 @@ export function shadeRows(S, y0, y1) {
         if (al > 0.004) { out[o] = 12; out[o + 1] = 8; out[o + 2] = 4; out[o + 3] = al * 255; }
         continue;
       }
-      const hx = x > 0 && x < cw - 1 ? (Hf[i + 1] - Hf[i - 1]) * 0.5 : 0;
-      const hy = y > 0 && y < ch - 1 ? (Hf[i + cw] - Hf[i - cw]) * 0.5 : 0;
+      // Slopes and ridges only look at solid neighbours: the empty margin and the picture opening
+      // aren't surface, and treating them as a cliff turns the 1px edge fringe into a fake ridge.
+      const nb = (j) => (M[j] && M[j] !== HOLE ? Hf[j] : h);
+      const hx = x > 0 && x < cw - 1 ? (nb(i + 1) - nb(i - 1)) * 0.5 : 0;
+      const hy = y > 0 && y < ch - 1 ? (nb(i + cw) - nb(i - cw)) * 0.5 : 0;
       const nl = 1 / Math.sqrt(hx * hx + hy * hy + 1), nx = -hx * nl, ny = -hy * nl, nz = nl;
       const diff = Math.max(0, nx * KEY[0] + ny * KEY[1] + nz * KEY[2]) * (1 - 0.85 * sh);
       const px = x + 0.5, py = y + 0.5;
@@ -356,11 +361,12 @@ export function shadeRows(S, y0, y1) {
         // Wear: exposure decides where hands and dusting cloths reach — proud carving, sharp ridges,
         // outer edges. Noise is stretched along the moulding so abrasion reads as streaks, not spots.
         const xa = Math.max(0, x - rc), xb = Math.min(cw - 1, x + rc), ya = Math.max(0, y - rc), yb = Math.min(ch - 1, y + rc);
-        const conv = (h - 0.25 * (Hf[y * cw + xa] + Hf[y * cw + xb] + Hf[ya * cw + x] + Hf[yb * cw + x])) * convScale;
+        const conv = (h - 0.25 * (nb(y * cw + xa) + nb(y * cw + xb) + nb(ya * cw + x) + nb(yb * cw + x))) * convScale;
         const prom = (h - bl) * cavScale;
         const along = d === py - oy ? px : d === ox + Wo - px ? py : d === oy + Ho - py ? -px : -py;
         const wn = sample(nWear, along * wearS * 0.22, d * wearS * 2.2);
-        const expo = Math.min(1.6, Math.max(0, prom) * 0.55) + Math.min(0.7, Math.max(0, conv) * 0.12) + (d < Tr * 0.035 ? 0.55 : 0);
+        const carved = Math.min(1.6, Math.max(0, prom) * 0.55) + Math.min(0.7, Math.max(0, conv) * 0.12);
+        const expo = carved + (d < Tr * 0.035 ? 0.55 : 0);
         const rub = smooth(0, 0.35, expo * 0.85 + (wn - 0.5) * 0.9 - 1.3 + wearAmt * 1.35);
         if (mat === WOOD) {
           // Carved wood under varnish: grain-figured albedo, diffuse light, a clear-coat highlight.
@@ -409,8 +415,10 @@ export function shadeRows(S, y0, y1) {
             const v = (0.4 + 0.75 * diff) * ao;
             const t = rub * (0.6 + 0.4 * sample(nFine, px * 1.7, py * 1.7)); // gold hangs on in the rub
             r += (bole[0] * v - r) * t; gg += (bole[1] * v - gg) * t; b += (bole[2] * v - b) * t;
-            const cn = sample(nWear, px * wearS * 0.6 + 97, py * wearS * 0.6 + 41);
-            const chip = smooth(0.82, 0.88, cn + 0.08 * wear.chips) * smooth(0.75, 1, rub) * (expo > 0.5 ? 1 : 0);
+            // Chips are where a flake of gesso broke away: coarse blobs on the proudest carving only.
+            // Fine noise or thin features would make them read as stray specks, so neither is used.
+            const cn = sample(nWear, px * wearS * 0.2 + 97, py * wearS * 0.2 + 41);
+            const chip = smooth(0.86, 0.9, cn + 0.06 * wear.chips) * smooth(0.85, 1, rub) * smooth(0.8, 1.1, carved) * (d > rimW && d < Tr - rimW ? 1 : 0);
             if (chip > 0) {
               const gv = (0.5 + 0.55 * diff) * ao;
               r += (gesso[0] * gv - r) * chip; gg += (gesso[1] * gv - gg) * chip; b += (gesso[2] * gv - b) * chip;
