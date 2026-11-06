@@ -9,8 +9,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         node: [18, 20, 22]
+        # macOS runners are scarce on GitHub; one macOS job is enough as a cross-OS check
+        include:
+          - os: macos-latest
+            node: 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
