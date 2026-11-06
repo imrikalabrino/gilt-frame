@@ -11,11 +11,11 @@ Designs aren't picked from a pool. Each seed picks a **style**, then drives cont
 
 Pass a seed string to get the same frame back at any image size.
 
-![contact sheet](examples/sheet.png)
+![contact sheet](https://raw.githubusercontent.com/imrikalabrino/gilt-frame/main/examples/sheet.png)
 
 One frame per style:
 
-![styles](examples/styles.png)
+![styles](https://raw.githubusercontent.com/imrikalabrino/gilt-frame/main/examples/styles.png)
 
 | style | share of seeds | what it is |
 |---|---|---|
@@ -28,11 +28,11 @@ One frame per style:
 
 One seed in every finish and palette:
 
-![palettes](examples/palettes.png)
+![palettes](https://raw.githubusercontent.com/imrikalabrino/gilt-frame/main/examples/palettes.png)
 
 `wear: 0` vs `wear: 0.75`, same seed:
 
-![wear](examples/wear.png)
+![wear](https://raw.githubusercontent.com/imrikalabrino/gilt-frame/main/examples/wear.png)
 
 ## Install
 
